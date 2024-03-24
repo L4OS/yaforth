@@ -18,6 +18,7 @@ extern options_t   options;
 #include <io.h>
 #include <Windows.h>
 #include <conio.h>
+#include <fcntl.h>
 
 #define isatty _isatty
 #define getch _getch
@@ -101,9 +102,14 @@ state_t read_stream(FILE * fp)
 
         char* ptr = yaforth_gets(line, max_line_size - 1, fp);
         if (ptr)
-        {
+        try {
             SKIP_PREFIX
                 state = forth(ptr);
+        }
+        catch (std::exception e)
+        {
+            printf("%s\n", e.what());
+            state = error;
         }
         if (fp == stdin) {
             void show_status(state_t state);
@@ -158,10 +164,18 @@ int read_key()
     return ch;
 }
 
-#ifdef USE_READLINE
+#ifndef _WIN32
 
 char * yaforth_gets(char * buff, int sz, FILE * fp)
 {
+    if (!isatty(fileno(fp))) {
+        char * ptr = fgets(buff, sz, fp);
+        if(!ptr)
+          buff[0] = 0;
+        return buff;
+    }
+
+#ifdef USE_READLINE
     static char *line_read = (char *)NULL;
     char  * line_ptr;
 
@@ -190,6 +204,11 @@ char * yaforth_gets(char * buff, int sz, FILE * fp)
     else {
         buff[0] = 0;
     }
+#else
+    char * ptr = fgets(buff, sz, fp);
+    if(!ptr)
+        buff[0] = 0;
+#endif
     return buff;
 }
 
@@ -199,8 +218,26 @@ char * yaforth_gets(char * buff, int sz, FILE * fp)
 {
     if(interactive)
         fprintf(stdout,"%s", prompt);
-    return fgets(buff, sz, fp);
+
+    if (!isatty(_fileno(fp))) {
+        fgets(buff, sz, fp);
+        return buff;
+    }
+    wchar_t* wstr = (wchar_t*) alloca(sz * 2);
+    int save = _setmode(_fileno(fp), _O_U16TEXT);
+
+    fgetws(wstr, sz << 1, fp);
+
+    //make UTF-8:
+    int len = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, 0, 0, 0, 0);
+    if (!len) return nullptr;
+
+    WideCharToMultiByte(CP_UTF8, 0, wstr, -1, buff, len, 0, 0);
+
+    _setmode(_fileno(fp), save);
+    return buff;
 }
+
 #endif
 
 void show_status(state_t state)
@@ -236,6 +273,7 @@ int main(int argc, char* argv[])
     const char* generated_name = nullptr;
             
 #if _WIN32
+    SetConsoleCP(65001);
     SetConsoleOutputCP(65001);
 #endif
 

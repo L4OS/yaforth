@@ -104,6 +104,16 @@ state_t parse_number(std::string& number_str)
     return neutral;
 }
 
+state_t show_words()
+{
+    fprintf(stdout, "List of defined words:\n\n");
+    for (auto& word : words) {
+        fprintf(stdout, "%s ", word.second.NAME.c_str());
+    }
+    return neutral;
+}
+
+
 state_t register_function()
 {
     word_t  w = memory.get();
@@ -857,16 +867,19 @@ state_t check_item(std::string& item, state_t state)
             else
             {
                 char ch = item[0];
-                if (isdigit(ch) || ch == '-') {
-                    state = parse_number(item);
-                } 
-                else if (ch >= 'a' && ch <= 'f' || ch >= 'A' && ch <= 'F') {
-                    state = parse_number(item);
+                if (ch > 0)
+                {
+                    if (isdigit(ch) || ch == '-') {
+                        state = parse_number(item);
+                        break;
+                    }
+                    if (ch >= 'a' && ch <= 'f' || ch >= 'A' && ch <= 'F') {
+                        state = parse_number(item);
+                        break;
+                    }
                 }
-                else {
-                    printf("Line: %d Undefined name: %s\n", line_no, item.c_str());
-                    state = error;
-                }
+                printf("Line: %d Undefined name: %s\n", line_no, item.c_str());
+                state = error;
             }
         }
         break;
@@ -899,13 +912,15 @@ state_t execute()
 #ifdef TRACE
             printf("\n%08x: %s ", a, rec->NAME.c_str());
 #endif
-            if ( !func_name.empty() && rec->MIN_STACK > integer_stack.size()) {
+            if ( func_name.empty() && rec->MIN_STACK > integer_stack.size()) {
                 char err_buff[80];
                 snprintf(err_buff, 80, "%s[%u]: Stack underflow operation '%s'",
                     func_name.c_str(),
                     memory.get_current_address(),
                     rec->NAME.c_str()
                     );
+                r = memory.get_execution_address();
+                memory.jump(r);
                 throw std::out_of_range(std::string(err_buff));
             }
 
@@ -1245,8 +1260,8 @@ state_t init()
         register_variable("ansi-term");
 
         register_builtin(":", 0, register_function, asm_function);
-        register_builtin("^push", 1, push_value, asm_push_value);
-        register_builtin("^jump", 1, do_jump, asm_jump);
+        register_builtin("^push", 0, push_value, asm_push_value);
+        register_builtin("^jump", 0, do_jump, asm_jump);
         register_builtin("here", 0, do_here, asm_here);
         register_builtin("!", 2, do_store, asm_store);
         register_builtin("@", 1, do_fetch, asm_fetch);
@@ -1295,6 +1310,7 @@ state_t init()
         register_builtin(".\"", 0, do_print_string, asm_print_string);
         register_builtin("emit", 1, emit, asm_emit);
         register_builtin("key", 0, get_key, asm_key);
+        register_builtin("words", 0, show_words, nullptr);
 
         // Defaults
         forth("0 ansi-term !");
